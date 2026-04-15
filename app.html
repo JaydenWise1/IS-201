@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Golf Simulator</title>
+
+<style>
+body {
+    font-family: Arial;
+    background: #E4E4DE;
+    display: flex;
+    justify-content: center;
+    padding: 20px;
+}
+
+.app {
+    width: 950px;
+    background: white;
+    padding: 20px;
+    border-radius: 12px;
+}
+
+h1 {
+    text-align: center;
+    color: #595f39;
+}
+
+/* COURSE */
+.map {
+    height: 300px;
+    border-radius: 10px;
+    position: relative;
+    margin: 20px 0;
+    background: linear-gradient(to top, #4a7c3a, #7dbb5f, #a3d977);
+}
+
+.green {
+    position: absolute;
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 150px;
+    height: 100px;
+    background: #b6f28a;
+    border-radius: 50%;
+}
+
+.cup {
+    position: absolute;
+    top: 40px;
+    left: 50%;
+    width: 10px;
+    height: 10px;
+    background: black;
+    border-radius: 50%;
+    transform: translateX(-50%);
+}
+
+.ball {
+    width: 12px;
+    height: 12px;
+    background: white;
+    border: 2px solid black;
+    border-radius: 50%;
+    position: absolute;
+    bottom: 10px;
+    left: 50%;
+}
+
+/* CONTROLS */
+.controls { margin-top: 10px; }
+
+input[type="range"] { width: 200px; }
+
+button {
+    padding: 10px;
+    margin-top: 10px;
+    background: #595f39;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+button:hover { background: #1B1B1B; }
+
+.log {
+    background: #f5f5f5;
+    padding: 10px;
+    height: 120px;
+    overflow-y: auto;
+}
+</style>
+</head>
+
+<body>
+
+<div class="app">
+<h1>Golf Simulator</h1>
+
+<p>
+Hole: <span id="hole">1</span> |
+Par: <span id="par"></span> |
+Distance: <span id="distance"></span> yards
+</p>
+
+<p>
+Remaining: <span id="remaining"></span> |
+Strokes: <span id="strokes">0</span>
+</p>
+
+<select id="club">
+  <option value="driver">Driver</option>
+  <option value="5i">5 Iron</option>
+  <option value="6i">6 Iron</option>
+  <option value="7i">7 Iron</option>
+  <option value="8i">8 Iron</option>
+  <option value="9i">9 Iron</option>
+  <option value="wedge">Wedge</option>
+  <option value="putter">Putter</option>
+</select>
+
+<div class="controls">
+  <p>Power</p>
+  <input type="range" id="power" min="50" max="100" value="80">
+
+  <p>Aim</p>
+  <input type="range" id="aim" min="-25" max="25" value="0">
+</div>
+
+<button onclick="hitShot()">Hit Shot</button>
+<button onclick="nextHole()">Next Hole</button>
+
+<div class="map">
+  <!-- TRAJECTORY -->
+  <canvas id="trajectory" width="950" height="300" 
+    style="position:absolute; top:0; left:0;"></canvas>
+
+  <div class="green"></div>
+  <div class="cup"></div>
+  <div class="ball" id="ball"></div>
+</div>
+
+<div class="log" id="log"></div>
+
+</div>
+
+<script>
+let hole = 1;
+let strokes = 0;
+let remaining = 0;
+let totalYards = 0;
+
+const holes = [
+  {par:4, dist:380},
+  {par:3, dist:160},
+  {par:5, dist:520},
+  {par:4, dist:410},
+  {par:4, dist:370},
+  {par:3, dist:180},
+  {par:5, dist:500},
+  {par:4, dist:420},
+  {par:4, dist:390}
+];
+
+function startHole(){
+  let h = holes[hole-1];
+  strokes = 0;
+  remaining = h.dist;
+  totalYards = h.dist;
+  updateUI();
+  log(`Hole ${hole} started`);
+}
+
+function rand(min,max){
+  return Math.floor(Math.random()*(max-min+1))+min;
+}
+
+function getClubBase(c){
+  switch(c){
+    case "driver": return rand(280,330);
+    case "5i": return rand(190,210);
+    case "6i": return rand(170,190);
+    case "7i": return rand(150,170);
+    case "8i": return rand(130,150);
+    case "9i": return rand(110,130);
+    case "wedge": return rand(70,100);
+    case "putter": return rand(5,20);
+  }
+}
+
+/* TRAJECTORY PREVIEW */
+function drawTrajectory(){
+  const canvas = document.getElementById("trajectory");
+  const ctx = canvas.getContext("2d");
+
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+
+  let power = document.getElementById("power").value/100;
+  let aim = document.getElementById("aim").value;
+
+  let startX = canvas.width/2;
+  let startY = canvas.height - 10;
+
+  let dist = 200 * power;
+  let dir = aim * 3;
+
+  ctx.beginPath();
+  ctx.moveTo(startX,startY);
+
+  for(let t=0;t<=1;t+=0.05){
+    let x = startX + dir*t;
+    let y = startY - dist*t + (t*t*80);
+    ctx.lineTo(x,y);
+  }
+
+  ctx.strokeStyle="red";
+  ctx.setLineDash([5,5]);
+  ctx.lineWidth=2;
+  ctx.stroke();
+}
+
+/* BALL ANIMATION */
+function animateBall(targetX,targetY){
+  let ball = document.getElementById("ball");
+
+  let startX = ball.offsetLeft;
+  let startY = ball.offsetTop;
+
+  let steps = 30;
+  let step = 0;
+
+  let dx = (targetX - startX)/steps;
+  let dy = (targetY - startY)/steps;
+
+  let interval = setInterval(()=>{
+    step++;
+    ball.style.left = (ball.offsetLeft + dx) + "px";
+    ball.style.top = (ball.offsetTop + dy) + "px";
+    if(step>=steps) clearInterval(interval);
+  },20);
+}
+
+function hitShot(){
+  if(remaining<=0) return;
+
+  let club = document.getElementById("club").value;
+  let power = document.getElementById("power").value/100;
+  let aim = document.getElementById("aim").value;
+
+  if(remaining<=10 && club==="putter"){
+    strokes++;
+    remaining=0;
+    log("Tap-in!");
+    updateUI();
+    return;
+  }
+
+  let shot = getClubBase(club)*power;
+  let curve = rand(-10,10);
+
+  remaining -= shot;
+  strokes++;
+
+  if(remaining<=0){
+    remaining=0;
+    log("Holed out!");
+  } else {
+    log(`Shot ${Math.round(shot)} yards`);
+  }
+
+  let progress = 1 - (remaining/totalYards);
+  let map = document.querySelector(".map");
+
+  let targetY = map.clientHeight - (progress*map.clientHeight);
+  let targetX = map.clientWidth/2 + (aim*3 + curve);
+
+  animateBall(targetX,targetY);
+  updateUI();
+}
+
+function nextHole(){
+  hole++;
+  if(hole>9){
+    alert("Round complete!");
+    location.reload();
+  } else startHole();
+}
+
+function updateUI(){
+  let h = holes[hole-1];
+  document.getElementById("hole").innerText = hole;
+  document.getElementById("par").innerText = h.par;
+  document.getElementById("distance").innerText = h.dist;
+  document.getElementById("remaining").innerText = Math.max(0,Math.round(remaining))+" yds";
+  document.getElementById("strokes").innerText = strokes;
+}
+
+function log(t){
+  let l=document.getElementById("log");
+  l.innerHTML+=t+"<br>";
+  l.scrollTop=l.scrollHeight;
+}
+
+/* LIVE UPDATES */
+document.getElementById("power").addEventListener("input", drawTrajectory);
+document.getElementById("aim").addEventListener("input", drawTrajectory);
+
+startHole();
+drawTrajectory();
+</script>
+
+</body>
+</html>
